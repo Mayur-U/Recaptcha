@@ -24,7 +24,7 @@ INPUT_CSV = "students.csv"
 RAW_DATA_CSV = "raw_results.csv" # <-- [NEW] Intermediate save file
 SUMMARY_DATA_CSV = "raw_summary.csv" # <-- [NEW] Intermediate save file
 OUTPUT_EXCEL = "vtu_results.xlsx"
-MAX_CAPTCHA_ATTEMPTS = 15
+MAX_CAPTCHA_ATTEMPTS = 20
 MAX_SUBJECTS = 10 # This is only used for the old "wide" format, but can be left
 
 # --- Model Constants (MUST MATCH train.py) ---
@@ -149,19 +149,20 @@ def scrape_results_page(page_source):
 
 # --- [NEW] Helper Function 4: Save Raw Data ---
 def save_raw_data(all_subject_rows, all_summary_rows):
-    """Saves the collected data to intermediate CSV files for robustness."""
+    """
+    Saves the collected data to intermediate CSV files for robustness.
+    This now OVERWRITES the files with the complete data set.
+    """
     try:
         print(f"\n[Info] Saving raw scraped data...")
         # Save subjects
         subjects_df = pd.DataFrame(all_subject_rows)
-        # Check if file exists to append without header
-        file_exists = os.path.exists(RAW_DATA_CSV)
-        subjects_df.to_csv(RAW_DATA_CSV, index=False, header=not file_exists, mode='a')
+        # Write header only if file doesn't exist or is empty
+        subjects_df.to_csv(RAW_DATA_CSV, index=False, mode='w') # <-- OVERWRITE
         
         # Save summaries
         summary_df = pd.DataFrame(all_summary_rows)
-        file_exists = os.path.exists(SUMMARY_DATA_CSV)
-        summary_df.to_csv(SUMMARY_DATA_CSV, index=False, header=not file_exists, mode='a')
+        summary_df.to_csv(SUMMARY_DATA_CSV, index=False, mode='w') # <-- OVERWRITE
         print("[Info] Raw data saved.")
     except Exception as e:
         print(f"[Warn] Could not save raw CSV data: {e}")
@@ -244,7 +245,7 @@ def process_data_to_excel():
 # --- [NEW] Helper Function 6: Clear Raw Data Files ---
 def clear_raw_data_files():
     """Deletes the intermediate CSV files."""
-    print("[Info] Clearing raw data files...")
+    print("[Info] Clearing raw data files for a fresh run...")
     if os.path.exists(RAW_DATA_CSV):
         os.remove(RAW_DATA_CSV)
     if os.path.exists(SUMMARY_DATA_CSV):
@@ -256,7 +257,6 @@ def main():
     
     # --- [NEW] Clear previous raw files ---
     # This ensures we are starting a fresh run.
-    # If you want to *resume* a failed run, comment these lines out.
     clear_raw_data_files()
     # --------------------------------------
 
@@ -286,10 +286,10 @@ def main():
         driver = webdriver.Chrome(service=service, options=options)
     except Exception as e: print(f"Error starting Selenium WebDriver: {e}"); return
 
-    # --- Lists to hold all data for final processing ---
+    # --- [NEW] Lists to hold all data for final processing ---
     all_subject_rows = [] 
     all_summary_rows = []
-    # ---------------------------------------------------
+    # --------------------------------------------------------
     failed_usns = []
 
     # 4. --- Main Loop ---

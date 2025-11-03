@@ -26,6 +26,15 @@
             <p class="text-lg text-gray-400">Enter USNs, import, or just start fetching.</p>
         </div>
 
+        <!-- --- [NEW] URL Input Field --- -->
+        <div class="bg-gray-800 rounded-lg shadow-xl p-6 mb-6">
+            <label for="vtu_url" class="block text-sm font-medium text-gray-300 mb-2">
+                VTU Results URL
+            </label>
+            <input type="text" id="vtu_url" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-md shadow-inner text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500" value="https://results.vtu.ac.in/JJEcbcs25/index.php">
+        </div>
+        <!-- --------------------------- -->
+
         <!-- Input Section -->
         <div class="bg-gray-800 rounded-lg shadow-xl p-6 mb-6">
             <div class="flex flex-col md:flex-row gap-4">
@@ -33,7 +42,7 @@
                 <!-- Text Area -->
                 <div class="flex-grow">
                     <label for="usn_text" class="block text-sm font-medium text-gray-300 mb-2">
-                        USNs (one per line or comma-separated)
+                        USNs (comma-separated)
                     </label>
                     <textarea id="usn_text" rows="10" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-md shadow-inner text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="1GD22CS001, 1GD22CS002..."></textarea>
                 </div>
@@ -46,11 +55,9 @@
                     <button id="start_button" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-md shadow-md transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
                         Start Fetching
                     </button>
-                    <!-- --- [NEW] Download Button --- -->
                     <button id="download_button" style="display: none;" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-md shadow-md transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
                         Download Excel
                     </button>
-                    <!-- ------------------------- -->
                 </div>
             </div>
         </div>
@@ -68,10 +75,11 @@
         const socket = io();
         
         // --- Get UI Elements ---
+        const vtuUrl = document.getElementById('vtu_url'); // <-- [NEW]
         const usnText = document.getElementById('usn_text');
         const importButton = document.getElementById('import_button');
         const startButton = document.getElementById('start_button');
-        const downloadButton = document.getElementById('download_button'); // <-- [NEW]
+        const downloadButton = document.getElementById('download_button');
         const log = document.getElementById('log');
 
         let isRunning = false;
@@ -88,11 +96,13 @@
             if (running) {
                 startButton.disabled = true;
                 importButton.disabled = true;
-                downloadButton.style.display = 'none'; // <-- [NEW] Hide on run
+                vtuUrl.disabled = true; // <-- [NEW] Disable URL field
+                downloadButton.style.display = 'none'; 
                 startButton.textContent = "Running...";
             } else {
                 startButton.disabled = false;
                 importButton.disabled = false;
+                vtuUrl.disabled = false; // <-- [NEW] Re-enable URL field
                 startButton.textContent = "Start Fetching";
             }
         }
@@ -111,6 +121,8 @@
             setRunningState(true);
             
             const usnInput = usnText.value.trim();
+            const urlInput = vtuUrl.value.trim(); // <-- [NEW] Get URL value
+
             // Split by comma or newline, filter out empty lines
             const usns = usnInput.replace(/,/g, '\n').split('\n').map(usn => usn.trim()).filter(usn => usn.length > 0);
 
@@ -119,15 +131,19 @@
                 setRunningState(false);
                 return;
             }
+            if (urlInput.length === 0) {
+                logToScreen("Error: VTU Results URL cannot be empty.\n");
+                setRunningState(false);
+                return;
+            }
             
-            // Send the list of USNs to the server
-            socket.emit('start-fetch', { usns: usns });
+            // --- [MODIFIED] Send the URL along with the USNs ---
+            socket.emit('start-fetch', { usns: usns, url: urlInput });
         });
 
         // 3. Download Button
         downloadButton.addEventListener('click', () => {
             logToScreen("Starting download...\n");
-            // This just navigates to the download URL, triggering the browser download
             window.location.href = '/download';
         });
 
@@ -153,7 +169,7 @@
             setRunningState(false);
         });
         
-        // E. [NEW] Server confirms file is ready
+        // E. Server confirms file is ready
         socket.on('download-ready', () => {
             logToScreen("\n[Info] Results file is ready for download.\n");
             downloadButton.style.display = 'block'; // Show the button
