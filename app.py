@@ -1,134 +1,163 @@
 import os
 import sys
 import subprocess
-import threading
+import pandas as pd
 from flask import Flask, render_template, send_from_directory
 from flask_socketio import SocketIO, emit
 import eventlet
+
 eventlet.monkey_patch()
 
-# --- Configuration ---
-BACKEND_SCRIPT = "bulk_fetcher_5_excelfix.py"
+BACKEND_SCRIPT = "bulk_fetcher_6.py"
 DEFAULT_CSV = "students.csv"
+RAW_DATA = "raw_results.csv"
 OUTPUT_EXCEL = "vtu_results.xlsx"
-PYTHON_EXECUTABLE = sys.executable
-# ---------------------
+PY = sys.executable
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'secret-key-for-socketio!'
-socketio = SocketIO(app, async_mode='eventlet')
+socketio = SocketIO(app, async_mode="eventlet")
 
-# 1. Serve the HTML Webpage
-@app.route('/')
+
+# -----------------------------------------
+# FRONTEND ROUTES
+# -----------------------------------------
+@app.route("/")
 def index():
-    """Serves the main index.html page."""
-    return render_template('index.html')
+    return render_template("index.html")
 
-# 2. Create the Download Route
-@app.route('/download')
-def download_file():
-    """Handles the file download request."""
+
+@app.route("/download")
+def download():
     try:
-        directory = os.getcwd() 
-        print(f"Download requested for: {OUTPUT_EXCEL} from {directory}")
-        return send_from_directory(directory, OUTPUT_EXCEL, as_attachment=True)
+        return send_from_directory(os.getcwd(), OUTPUT_EXCEL, as_attachment=True)
     except FileNotFoundError:
-        print("Error: File not found.")
-        return "Error: File not found. Run the fetcher first.", 404
+        return "Excel not generated yet", 404
 
-# 3. Handle "Import CSV" button click
-@socketio.on('import-csv')
-def handle_import_csv():
-    """Reads the default CSV and sends its content to the browser."""
-    print(f"Client requested to import {DEFAULT_CSV}")
-    try:
-        if not os.path.exists(DEFAULT_CSV):
-            emit('log-message', {'data': f"Error: '{DEFAULT_CSV}' not found.\n"})
-            return
-        with open(DEFAULT_CSV, 'r') as f:
-            usns = f.readlines()[1:] # Read all lines, skip header ("USN")
-            emit('csv-data', {'usns': "".join(usns)})
-            emit('log-message', {'data': f"Successfully imported {len(usns)} USNs from {DEFAULT_CSV}\n"})
-    except Exception as e:
-        emit('log-message', {'data': f"Error importing CSV: {e}\n"})
 
-# 4. Handle "Start Fetching" button click
-@socketio.on('start-fetch')
-def handle_start_fetch(message):
-    """Writes the USNs to the CSV and starts the backend script in a thread."""
-    usn_list = message.get('usns', [])
-    vtu_url = message.get('url') # <-- [NEW] Get the URL from the UI
-
-    if not usn_list:
-        emit('log-message', {'data': "Error: No USNs provided.\n"})
+# -----------------------------------------
+# IMPORT CSV
+# -----------------------------------------
+@socketio.on("import-csv")
+def import_csv():
+    if not os.path.exists(DEFAULT_CSV):
+        emit("log-message", {"data": "[Error] students.csv missing\n"})
         return
+
+    with open(DEFAULT_CSV) as f:
+        lines = f.readlines()[1:]
+
+    emit("csv-data", {"usns": "".join(lines)})
+    emit("log-message", {"data": f"Imported {len(lines)} USNs\n"})
+
+
+# -----------------------------------------
+# START FETCHING
+# -----------------------------------------
+@socketio.on("start-fetch")
+def start_fetch(msg):
+    usns = msg.get("usns", [])
+    vtu_url = msg.get("url", "")
+
+    if not usns:
+        emit("log-message", {"data": "No USNs provided.\n"})
+        return
+
     if not vtu_url:
-        emit('log-message', {'data': "Error: No VTU URL provided.\n"})
+        emit("log-message", {"data": "No VTU URL provided.\n"})
         return
 
-    # 1. Overwrite the students.csv file
-    print(f"Writing {len(usn_list)} USNs to {DEFAULT_CSV}...")
+    # Write USNs to CSV
+    with open(DEFAULT_CSV, "w") as f:
+        f.write("USN\n")
+        for u in usns:
+            f.write(u + "\n")
+
+    # Launch scraper with URL
+    socketio.start_background_task(target=run_scraper, vtu_url=vtu_url)
+    emit("fetch-started")
+
+
+# -----------------------------------------
+# RUN SCRAPER WITH URL ARG
+# -----------------------------------------
+def run_scraper(vtu_url):
+    cmd = [PY, BACKEND_SCRIPT, vtu_url]  # <-- IMPORTANT FIXED ARGUMENT
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True
+    )
+
+    # Stream logs back to UI
+    for line in iter(process.stdout.readline, ""):
+        socketio.emit("log-message", {"data": line})
+        eventlet.sleep(0.01)
+
+    process.wait()
+    socketio.emit("fetch-complete")
+
+    if os.path.exists(OUTPUT_EXCEL):
+        socketio.emit("download-ready")
+
+
+# -----------------------------------------
+# SGPA CALCULATION
+# -----------------------------------------
+def marks_to_gp(m):
     try:
-        with open(DEFAULT_CSV, 'w') as f:
-            f.write("USN\n") # Write header
-            for usn in usn_list:
-                f.write(f"{usn}\n")
-    except Exception as e:
-        emit('log-message', {'data': f"Error writing to {DEFAULT_CSV}: {e}\n"})
+        m = int(m)
+    except:
+        return 0
+
+    if m >= 90: return 10
+    if m >= 80: return 9
+    if m >= 70: return 8
+    if m >= 60: return 7
+    if m >= 50: return 6
+    if m >= 45: return 5
+    if m >= 40: return 4
+    return 0
+
+
+@socketio.on("sgpa-credits")
+def sgpa_calc(data):
+    credits = data.get("credits", {})
+
+    if not os.path.exists(RAW_DATA):
+        emit("log-message", {"data": "[SGPA ERROR] raw_results.csv not found\n"})
         return
 
-    # 2. Start the long-running script in a background thread
-    print("Starting backend script thread...")
-    # --- [MODIFIED] Pass the vtu_url to the target function ---
-    socketio.start_background_task(target=run_fetcher_script, vtu_url=vtu_url)
-    emit('fetch-started') # Tell the UI to disable buttons
+    df = pd.read_csv(RAW_DATA)
+    sgpa_map = {}
 
-def run_fetcher_script(vtu_url): # <-- [MODIFIED] Accept the URL
-    """
-    Runs the bulk_fetcher.py script as a subprocess and streams
-    its stdout/stderr to the web UI in real-time.
-    """
-    print(f"Using Python: {PYTHON_EXECUTABLE}")
-    # --- [MODIFIED] Add the URL as a command-line argument ---
-    command = [PYTHON_EXECUTABLE, BACKEND_SCRIPT, vtu_url]
-    print(f"Running command: {command}")
-    
-    socketio.emit('log-message', {'data': f"Starting backend script: {BACKEND_SCRIPT}...\n"})
-    socketio.emit('log-message', {'data': "-"*30 + "\n"})
+    for usn, group in df.groupby("USN"):
+        total_pts = 0
+        total_cr = 0
 
-    try:
-        # Start the subprocess
-        process = subprocess.Popen(
-            command, # <-- [MODIFIED] Use the command with the URL
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding='utf-8',
-            bufsize=1 # Line-buffered
-        )
+        for _, row in group.iterrows():
+            sub = row["Subject Code"]
+            if sub not in credits:
+                continue
 
-        # 3. Read output line-by-line in real-time
-        if process.stdout:
-            for line in iter(process.stdout.readline, ''):
-                socketio.emit('log-message', {'data': line})
-                eventlet.sleep(0.01) # Yield to other tasks
+            cr = credits[sub]
+            gp = marks_to_gp(row["Total Marks"])
 
-        # 4. Wait for the process to end
-        process.wait()
-        socketio.emit('log-message', {'data': "\n" + "-"*30 + "\n"})
-        socketio.emit('log-message', {'data': f"Backend script finished with exit code {process.returncode}\n"})
-    except Exception as e:
-        socketio.emit('log-message', {'data': f"\n--- FATAL ERROR ---\n{e}\n"})
-    finally:
-        # 5. Tell the UI to re-enable the buttons
-        socketio.emit('fetch-complete')
-        
-        if os.path.exists(OUTPUT_EXCEL):
-            socketio.emit('download-ready')
-        print("Backend script thread finished.")
+            total_pts += gp * cr
+            total_cr += cr
 
-# 4. Main entry point
-if __name__ == '__main__':
-    print("Starting Flask-SocketIO server on http://127.0.0.1:5000")
-    socketio.run(app, host='127.0.0.1', port=5000, allow_unsafe_werkzeug=True)
+        sgpa = round(total_pts / total_cr, 2) if total_cr else 0
+        sgpa_map[usn] = sgpa
 
+    # Update Excel file
+    excel = pd.read_excel(OUTPUT_EXCEL)
+    excel["SGPA"] = excel["USN"].apply(lambda u: sgpa_map.get(u, 0))
+    excel.to_excel(OUTPUT_EXCEL, index=False)
+
+    emit("log-message", {"data": "\n[SGPA] SGPA added to Excel.\n"})
+    emit("download-ready")
+
+
+# -----------------------------------------
+if __name__ == "__main__":
+    socketio.run(app, host="127.0.0.1", port=5000, allow_unsafe_werkzeug=True)

@@ -4,178 +4,193 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VTU Result Fetcher</title>
-    <!-- Load Tailwind CSS -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Load Socket.IO Client -->
+    <!-- Socket.IO Client -->
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+
     <style>
-        /* Simple scrollbar styling */
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #2d3748; }
         ::-webkit-scrollbar-thumb { background: #718096; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #a0aec0; }
     </style>
 </head>
+
 <body class="bg-gray-900 text-gray-200 font-sans">
 
-    <div class="container mx-auto p-4 md:p-8 max-w-4xl">
-        
-        <!-- Header -->
-        <div class="text-center mb-8">
-            <h1 class="text-4xl font-bold text-white">VTU Bulk Result Fetcher</h1>
-            <p class="text-lg text-gray-400">Enter USNs, import, or just start fetching.</p>
-        </div>
+<div class="container mx-auto p-4 md:p-8 max-w-4xl">
 
-        <!-- --- [NEW] URL Input Field --- -->
-        <div class="bg-gray-800 rounded-lg shadow-xl p-6 mb-6">
-            <label for="vtu_url" class="block text-sm font-medium text-gray-300 mb-2">
-                VTU Results URL
-            </label>
-            <input type="text" id="vtu_url" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-md shadow-inner text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500" value="https://results.vtu.ac.in/JJEcbcs25/index.php">
-        </div>
-        <!-- --------------------------- -->
-
-        <!-- Input Section -->
-        <div class="bg-gray-800 rounded-lg shadow-xl p-6 mb-6">
-            <div class="flex flex-col md:flex-row gap-4">
-                
-                <!-- Text Area -->
-                <div class="flex-grow">
-                    <label for="usn_text" class="block text-sm font-medium text-gray-300 mb-2">
-                        USNs (comma-separated)
-                    </label>
-                    <textarea id="usn_text" rows="10" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-md shadow-inner text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="1GD22CS001, 1GD22CS002..."></textarea>
-                </div>
-
-                <!-- Buttons -->
-                <div class="flex-shrink-0 flex flex-row md:flex-col justify-start md:w-40 gap-4">
-                    <button id="import_button" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-md shadow-md transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
-                        Import CSV
-                    </button>
-                    <button id="start_button" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-md shadow-md transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
-                        Start Fetching
-                    </button>
-                    <button id="download_button" style="display: none;" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-md shadow-md transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
-                        Download Excel
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Log Output Section -->
-        <div class="bg-gray-800 rounded-lg shadow-xl p-6">
-            <h2 class="text-2xl font-semibold text-white mb-4">Log Output</h2>
-            <pre id="log" class="w-full h-96 bg-gray-900 rounded-md p-4 overflow-y-auto text-sm text-gray-300 border border-gray-700 whitespace-pre-wrap break-words">Welcome! Click 'Import CSV' or 'Start Fetching'.</pre>
-        </div>
-
+    <!-- Header -->
+    <div class="text-center mb-8">
+        <h1 class="text-4xl font-bold text-white">VTU Bulk Result Fetcher</h1>
+        <p class="text-lg text-gray-400">Enter USNs, import, or just start fetching.</p>
     </div>
 
-    <script>
-        // --- Socket.IO Connection ---
-        const socket = io();
-        
-        // --- Get UI Elements ---
-        const vtuUrl = document.getElementById('vtu_url'); // <-- [NEW]
-        const usnText = document.getElementById('usn_text');
-        const importButton = document.getElementById('import_button');
-        const startButton = document.getElementById('start_button');
-        const downloadButton = document.getElementById('download_button');
-        const log = document.getElementById('log');
+    <!-- VTU URL Input -->
+    <div class="bg-gray-800 rounded-lg shadow-xl p-6 mb-6">
+        <label class="block text-sm font-medium text-gray-300 mb-2">VTU Results URL</label>
+        <input type="text" id="vtu_url"
+               class="w-full p-3 bg-gray-700 border border-gray-600 rounded-md shadow-inner text-gray-200"
+               value="https://results.vtu.ac.in/JJEcbcs25/index.php">
+    </div>
 
-        let isRunning = false;
+    <!-- USN Input -->
+    <div class="bg-gray-800 rounded-lg shadow-xl p-6 mb-6">
+        <div class="flex flex-col md:flex-row gap-4">
 
-        // --- Helper: Log to UI ---
-        function logToScreen(message) {
-            log.textContent += message;
-            log.scrollTop = log.scrollHeight; // Auto-scroll to bottom
+            <!-- Text Area -->
+            <div class="flex-grow">
+                <label class="block text-sm font-medium text-gray-300 mb-2">USNs (comma-separated)</label>
+                <textarea id="usn_text" rows="10"
+                          class="w-full p-3 bg-gray-700 border border-gray-600 rounded-md shadow-inner text-gray-200"
+                          placeholder="1GD22CS001, 1GD22CS002..."></textarea>
+            </div>
+
+            <!-- Buttons -->
+            <div class="flex-shrink-0 flex flex-row md:flex-col justify-start md:w-40 gap-4">
+                <button id="import_button"
+                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-md shadow-md">
+                    Import CSV
+                </button>
+
+                <button id="start_button"
+                        class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-md shadow-md">
+                    Start Fetching
+                </button>
+
+                <button id="download_button" style="display:none;"
+                        class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-md shadow-md">
+                    Download Excel
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Log Output -->
+    <div class="bg-gray-800 rounded-lg shadow-xl p-6 mb-6">
+        <h2 class="text-2xl font-semibold text-white mb-4">Log Output</h2>
+        <pre id="log"
+             class="w-full h-96 bg-gray-900 rounded-md p-4 overflow-y-auto text-sm text-gray-300 border border-gray-700 whitespace-pre-wrap break-words">
+Welcome! Click 'Import CSV' or 'Start Fetching'.
+        </pre>
+    </div>
+
+    <!-- ⭐ SGPA CREDIT PANEL ⭐ -->
+    <div id="sgpa_panel" class="bg-gray-800 rounded-lg shadow-xl p-6 mb-6 hidden">
+        <h2 class="text-2xl font-semibold text-white mb-4">SGPA Calculator</h2>
+        <p class="text-gray-400 mb-4">Enter credits for each subject:</p>
+
+        <div id="credit_fields" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+
+        <button id="calculate_sgpa_btn"
+                class="mt-4 bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-4 rounded-md shadow-md">
+            Calculate SGPA & Update Excel
+        </button>
+    </div>
+
+</div>
+
+<script>
+const socket = io();
+const logBox = document.getElementById("log");
+
+let allSubjects = new Set();  // Global subject collection
+let sgpaReady = false;
+
+// Logging helper
+function logMsg(msg) {
+    logBox.textContent += msg;
+    logBox.scrollTop = logBox.scrollHeight;
+}
+
+// Populate subject credit panel UI
+function buildCreditUI() {
+    const panel = document.getElementById("sgpa_panel");
+    const fields = document.getElementById("credit_fields");
+
+    fields.innerHTML = "";  // reset
+
+    allSubjects.forEach(sub => {
+        fields.innerHTML += `
+            <div class="flex items-center justify-between bg-gray-700 p-3 rounded-md">
+                <span class="font-semibold">${sub}</span>
+                <input type="number" min="0" max="10" id="credit_${sub}"
+                       class="w-20 p-2 text-black rounded-md"
+                       placeholder="Cr">
+            </div>`;
+    });
+
+    panel.classList.remove("hidden");
+}
+
+// SOCKET LISTENERS -----------------------------
+socket.on("log-message", msg => {
+    logMsg(msg.data);
+
+    // Listen for SUBJECTS marker from backend
+    if (msg.data.startsWith("[SUBJECTS]:")) {
+        const list = msg.data.replace("[SUBJECTS]:", "").trim().split(",");
+        list.forEach(s => allSubjects.add(s));
+        buildCreditUI();
+    }
+});
+
+socket.on("csv-data", data => {
+    document.getElementById("usn_text").value = data.usns;
+});
+
+socket.on("download-ready", () => {
+    logMsg("\n[Info] Excel ready for download.\n");
+    document.getElementById("download_button").style.display = "block";
+});
+
+// BUTTON HANDLERS ---------------------------
+document.getElementById("import_button").onclick = () => {
+    logMsg("Importing from students.csv...\n");
+    socket.emit("import-csv");
+};
+
+document.getElementById("start_button").onclick = () => {
+    logBox.textContent = "";
+    document.getElementById("download_button").style.display = "none";
+
+    const usnRaw = document.getElementById("usn_text").value;
+    const url = document.getElementById("vtu_url").value;
+
+    const usns = usnRaw.replace(/,/g, "\n").split("\n")
+        .map(x => x.trim()).filter(x => x.length > 0);
+
+    if (!usns.length) {
+        logMsg("Error: No USNs provided.\n");
+        return;
+    }
+    socket.emit("start-fetch", { usns: usns, url: url });
+};
+
+// ⭐ Calculate SGPA Button
+document.getElementById("calculate_sgpa_btn").onclick = () => {
+    let creditMap = {};
+
+    allSubjects.forEach(sub => {
+        const v = document.getElementById(`credit_${sub}`).value;
+        if (!v) {
+            alert("Enter credits for subject: " + sub);
+            return;
         }
+        creditMap[sub] = parseInt(v);
+    });
 
-        // --- Set Button States ---
-        function setRunningState(running) {
-            isRunning = running;
-            if (running) {
-                startButton.disabled = true;
-                importButton.disabled = true;
-                vtuUrl.disabled = true; // <-- [NEW] Disable URL field
-                downloadButton.style.display = 'none'; 
-                startButton.textContent = "Running...";
-            } else {
-                startButton.disabled = false;
-                importButton.disabled = false;
-                vtuUrl.disabled = false; // <-- [NEW] Re-enable URL field
-                startButton.textContent = "Start Fetching";
-            }
-        }
+    socket.emit("sgpa-credits", { credits: creditMap });
 
-        // --- Button Click Handlers ---
-        
-        // 1. Import Button
-        importButton.addEventListener('click', () => {
-            logToScreen("Importing from students.csv...\n");
-            socket.emit('import-csv');
-        });
+    logMsg("\n[SGPA] Credits sent to backend. Excel will include SGPA.\n");
+};
 
-        // 2. Start Button
-        startButton.addEventListener('click', () => {
-            log.textContent = ""; // Clear log
-            setRunningState(true);
-            
-            const usnInput = usnText.value.trim();
-            const urlInput = vtuUrl.value.trim(); // <-- [NEW] Get URL value
-
-            // Split by comma or newline, filter out empty lines
-            const usns = usnInput.replace(/,/g, '\n').split('\n').map(usn => usn.trim()).filter(usn => usn.length > 0);
-
-            if (usns.length === 0) {
-                logToScreen("Error: No USNs to process. Please enter or import USNs.\n");
-                setRunningState(false);
-                return;
-            }
-            if (urlInput.length === 0) {
-                logToScreen("Error: VTU Results URL cannot be empty.\n");
-                setRunningState(false);
-                return;
-            }
-            
-            // --- [MODIFIED] Send the URL along with the USNs ---
-            socket.emit('start-fetch', { usns: usns, url: urlInput });
-        });
-
-        // 3. Download Button
-        downloadButton.addEventListener('click', () => {
-            logToScreen("Starting download...\n");
-            window.location.href = '/download';
-        });
-
-        // --- Socket.IO Event Listeners ---
-
-        // A. Received CSV data from server
-        socket.on('csv-data', (data) => {
-            usnText.value = data.usns;
-        });
-
-        // B. Received a log message from server
-        socket.on('log-message', (msg) => {
-            logToScreen(msg.data);
-        });
-
-        // C. Server confirms process started
-        socket.on('fetch-started', () => {
-            setRunningState(true);
-        });
-
-        // D. Server confirms process is complete
-        socket.on('fetch-complete', () => {
-            setRunningState(false);
-        });
-        
-        // E. Server confirms file is ready
-        socket.on('download-ready', () => {
-            logToScreen("\n[Info] Results file is ready for download.\n");
-            downloadButton.style.display = 'block'; // Show the button
-        });
-        
-    </script>
+document.getElementById("download_button").onclick = () => {
+    window.location.href = "/download";
+};
+</script>
 
 </body>
 </html>

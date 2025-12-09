@@ -22,7 +22,7 @@ INPUT_CSV = "students.csv"
 RAW_DATA_CSV = "raw_results.csv"
 SUMMARY_DATA_CSV = "raw_summary.csv"
 OUTPUT_EXCEL = "vtu_results.xlsx"
-MAX_CAPTCHA_ATTEMPTS = 100
+MAX_CAPTCHA_ATTEMPTS = 10
 MAX_SUBJECTS = 10
 
 # --- Model Constants ---
